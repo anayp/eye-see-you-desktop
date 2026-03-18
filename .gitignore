@@ -1,0 +1,14 @@
+node_modules/
+dist/
+bin/
+local-models/
+*.log
+.env
+.DS_Store
+
+# Dev Docs
+plan.md
+changelog.md
+experts_opinions/
+Portable_eye_see_you.txt
+scripts/test-bridge.mjs

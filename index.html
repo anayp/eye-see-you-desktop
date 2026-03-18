@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>eye-see-you</title>
+    <link rel="stylesheet" href="./styles.css">
+
+    <script>
+        window.__eyeSeeEwCvReady = false;
+        window.Module = {
+            onRuntimeInitialized: function () {
+                window.__eyeSeeEwCvReady = true;
+                if (typeof window.__eyeSeeEwOnCvReady === "function") {
+                    window.__eyeSeeEwOnCvReady();
+                }
+            }
+        };
+    </script>
+    <link rel="stylesheet" href="local-models/xterm.css" />
+    <script src="local-models/xterm.js"></script>
+    <style>
+        #terminal-overlay {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            width: 550px;
+            height: 400px;
+            background: #000;
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            z-index: 2000;
+            display: none;
+            flex-direction: column;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            overflow: hidden;
+        }
+        .terminal-head {
+            padding: 0.5rem 1rem;
+            background: rgba(255,255,255,0.07);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+            border-bottom: 1px solid var(--panel-border);
+            color: var(--text);
+            user-select: none;
+        }
+        #terminal-container {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            padding: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="terminal-overlay">
+        <div class="terminal-head">
+            <span style="font-weight: 600; letter-spacing: 0.03em;">Autonomous Agent (Gemini CLI)</span>
+            <button id="terminal-close" class="icon-btn" style="font-size: 1.2rem; opacity: 0.7;">&times;</button>
+        </div>
+        <div id="terminal-container"></div>
+    </div>
+    <video id="camera-feed" autoplay playsinline muted></video>
+    <canvas id="overlay-canvas"></canvas>
+
+    <div id="loading-overlay" aria-live="polite">
+            <div class="loader-card">
+            <div class="loader-title" id="loader-title">Loading...</div>
+            <div class="loader-track">
+                <div class="loader-fill" id="loader-fill"></div>
+            </div>
+            <div class="loader-meta" id="loader-meta">0 / 1</div>
+        </div>
+    </div>
+
+    <div id="dev-log-overlay">
+        <div class="dev-log-head">
+            <span>Dev Log</span>
+            <span id="camera-track-info" style="font-size: 0.72rem; opacity: 0.7; margin: 0 0.6rem; flex: 1; text-align: right; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;"></span>
+            <button id="log-clear-btn" type="button">Clear</button>
+        </div>
+        <div id="dev-log-body"></div>
+    </div>
+
+    <div id="startup-overlay" role="button" tabindex="0" aria-label="Start eye-see-you">
+        <h1>eye-see-you</h1>
+        <p>Tap to initialize camera and on-device recognition lab.</p>
+    </div>
+
+    <div id="ui-layer">
+        <header class="top-bar">
+            <button id="menu-toggle" class="menu-toggle" aria-label="Open controls">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            <button id="terminal-toggle" class="icon-btn" style="margin-left: auto; margin-right: 1rem; color: var(--accent);" title="Toggle Agent Terminal">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="4 17 10 11 4 5"></polyline>
+                    <line x1="12" y1="19" x2="20" y2="19"></line>
+                </svg>
+            </button>
+        </header>
+
+        <aside id="menu-panel" aria-label="Recognition controls">
+            <div class="panel-header">
+                <h2>eye-see-you Controls</h2>
+                <button id="menu-close" class="icon-btn" aria-label="Close panel">&times;</button>
+            </div>
+            <div id="menu-content">
+                <div id="status-line" class="status-line" aria-live="polite">Idle. Tap start to initialize camera.</div>
+
+                <section class="mode-card hub-card" style="border-color: var(--accent); background: rgba(102, 217, 255, 0.03);">
+                    <div class="mode-title">Intelligence Hub</div>
+                    <div class="mode-subtitle">Manage AI brains and real-time usage.</div>
+                    
+                    <div class="control-group" style="margin-top: 0.8rem;">
+                        <label class="control-row">
+                            <span>Active Brain</span>
+                            <select id="brain-select" style="flex: 1; margin-left: 0.5rem; background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text); padding: 0.2rem 0.4rem; border-radius: 4px;">
+                                <option value="gemini">Gemini 2.0 (Pre-bundled)</option>
+                                <option value="claude">Claude 3.5 Sonnet</option>
+                                <option value="openai">OpenAI GPT-4o</option>
+                                <option value="perplexity">Perplexity Sonar</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    <div id="token-status-bar" style="margin-top: 0.8rem; padding: 0.6rem; background: rgba(0,0,0,0.4); border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.72rem; margin-bottom: 0.3rem;">
+                            <span id="token-plan-label">Plan: Free Tier</span>
+                            <span id="token-usage-percent">0% used</span>
+                        </div>
+                        <div style="height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
+                            <div id="token-fill" style="width: 0%; height: 100%; background: var(--accent); transition: width 0.3s ease;"></div>
+                        </div>
+                        <div id="rate-limit-msg" style="font-size: 0.68rem; margin-top: 0.4rem; color: var(--ok); opacity: 0.8;">Status: Rate limits stable.</div>
+                    </div>
+
+                    <button id="vault-toggle-btn" class="debug-btn" style="width: 100%; margin-top: 0.8rem; font-size: 0.72rem;">Manage Secure Key Vault</button>
+                </section>
+
+                <div id="vault-modal" class="modal-overlay">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Secure Key Vault</h3>
+                            <button id="vault-close" class="icon-btn">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <p style="font-size: 0.75rem; color: var(--muted); margin-bottom: 1rem;">Keys are encrypted and stored locally on your device.</p>
+                            <div class="vault-row">
+                                <label>Gemini API Key</label>
+                                <div class="input-with-help">
+                                    <input type="password" id="key-gemini" placeholder="AIza...">
+                                    <button class="help-btn" data-help="gemini">?</button>
+                                </div>
+                            </div>
+                            <div class="vault-row">
+                                <label>Claude API Key</label>
+                                <div class="input-with-help">
+                                    <input type="password" id="key-claude" placeholder="sk-ant-...">
+                                    <button class="help-btn" data-help="claude">?</button>
+                                </div>
+                            </div>
+                            <button id="vault-save-btn" class="debug-btn" style="width: 100%; margin-top: 1rem; background: var(--accent); color: #000; font-weight: bold;">Save & Encrypt Keys</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="help-popover" class="help-popover">
+                    <div id="help-text"></div>
+                    <button id="help-close">Close</button>
+                </div>
+
+                <section class="mode-card">
+                    <div class="mode-title">Capability Matrix</div>
+                    <div class="mode-subtitle">Runtime/model availability and fallback status.</div>
+                    <div class="cap-grid">
+                        <div>TensorFlow.js</div>
+                        <div class="cap-cell"><span id="cap-tf">pending</span><button id="retry-tf" class="cap-retry" type="button">retry</button></div>
+                        <div>COCO-SSD</div>
+                        <div class="cap-cell"><span id="cap-object">pending</span><button id="retry-object" class="cap-retry" type="button">retry</button></div>
+                        <div>Pose (MoveNet)</div>
+                        <div class="cap-cell"><span id="cap-pose">pending</span><button id="retry-pose" class="cap-retry" type="button">retry</button></div>
+                        <div>MediaPipe Hands</div>
+                        <div class="cap-cell"><span id="cap-hands">pending</span><button id="retry-hands" class="cap-retry" type="button">retry</button></div>
+                        <div>MediaPipe Face Mesh</div>
+                        <div class="cap-cell"><span id="cap-face">pending</span><button id="retry-face" class="cap-retry" type="button">retry</button></div>
+                        <div>MediaPipe Segmentation</div>
+                        <div class="cap-cell"><span id="cap-segment">pending</span><button id="retry-segment" class="cap-retry" type="button">retry</button></div>
+                        <div>OpenCV.js</div>
+                        <div class="cap-cell"><span id="cap-opencv">pending</span><button id="retry-opencv" class="cap-retry" type="button">retry</button></div>
+                    </div>
+                </section>
+
+                <section class="mode-card">
+                    <div class="mode-title">Performance</div>
+                    <div class="mode-subtitle">Live frame rate, inference latency, and scheduling controls.</div>
+                    <div class="cap-grid">
+                        <div>FPS</div><div id="metric-fps">0</div>
+                        <div>Object ms</div><div id="metric-object">0</div>
+                        <div>Pose ms</div><div id="metric-pose">0</div>
+                        <div>Hands ms</div><div id="metric-hands">0</div>
+                        <div>Face ms</div><div id="metric-face">0</div>
+                        <div>Segment ms</div><div id="metric-segment">0</div>
+                        <div>OpenCV ms</div><div id="metric-opencv">0</div>
+                    </div>
+                    <label class="control-row" for="fps-cap">
+                        <span>FPS Cap (0 = off)</span>
+                        <span class="value" id="fps-cap-value">0</span>
+                    </label>
+                    <input type="range" id="fps-cap" min="0" max="60" step="5" value="0">
+                    <label class="control-row" for="frame-skip">
+                        <span>Frame Skip</span>
+                        <span class="value" id="frame-skip-value">0</span>
+                    </label>
+                    <input type="range" id="frame-skip" min="0" max="5" step="1" value="0">
+                </section>
+
+                <section class="mode-card">
+                    <div class="mode-title">Detection Status</div>
+                    <div class="mode-subtitle">Counts and no-target feedback per active mode.</div>
+                    <div class="cap-grid">
+                        <div>Object</div><div id="det-object">inactive</div>
+                        <div>Pose</div><div id="det-pose">inactive</div>
+                        <div>Hands</div><div id="det-hands">inactive</div>
+                        <div>Face</div><div id="det-face">inactive</div>
+                        <div>Segment</div><div id="det-segment">inactive</div>
+                        <div>OpenCV</div><div id="det-opencv">inactive</div>
+                    </div>
+                </section>
+
+                <section class="mode-card">
+                    <div class="mode-head">
+                        <div>
+                            <div class="mode-title">Camera Source</div>
+                            <div class="mode-subtitle">Select camera input and mirror behavior.</div>
+                        </div>
+                    </div>
+                    <div class="mode-settings open">
+                        <label class="control-row" for="camera-select">
+                            <span>Camera Device</span>
+                        </label>
+                        <select id="camera-select"></select>
+                        <label class="control-row" for="setting-mirror-output">
+                            <span>Mirror Video + Effects</span>
+                            <input type="checkbox" id="setting-mirror-output" checked>
+                        </label>
+                    </div>
+                </section>
+
+                <section class="mode-card" id="auto-card">
+                    <div class="mode-head">
+                        <div>
+                            <div class="mode-title">Auto Mode (Primary)</div>
+                            <div class="mode-subtitle">Cycles through object, pose, hands, face, segment, and OpenCV.</div>
+                        </div>
+                        <input type="checkbox" id="mode-auto">
+                    </div>
+                    <div class="mode-settings" id="settings-auto">
+                        <label class="control-row" for="auto-interval">
+                            <span>Cycle Interval (sec)</span>
+                            <span class="value" id="auto-interval-value">6</span>
+                        </label>
+                        <input type="range" id="auto-interval" min="3" max="16" step="1" value="6">
+                        <label class="control-row" for="auto-randomize">
+                            <span>Randomize Presets</span>
+                            <input type="checkbox" id="auto-randomize" checked>
+                        </label>
+                        <div class="auto-qc-status" id="auto-qc-status">QC monitor is idle.</div>
+                        <div class="auto-profile" id="auto-profile">Auto is off.</div>
+                    </div>
+                </section>
+
+                <section class="mode-card">
+                    <div class="mode-title">Developer Console</div>
+                    <div class="mode-subtitle">Verbose logging for dev. Switch to errors-only later.</div>
+                    <label class="control-row" for="show-dev-log">
+                        <span>Show Log Overlay</span>
+                        <input type="checkbox" id="show-dev-log" checked>
+                    </label>
+                    <label class="control-row" for="log-level">
+                        <span>Log Level</span>
+                    </label>
+                    <select id="log-level">
+                        <option value="mama">mama-mama-mama-mama</option>
+                        <option value="high" selected>high-level overview</option>
+                        <option value="error">errors only</option>
+                        <option value="off">off</option>
+                    </select>
+                </section>
+
+                <section class="mode-card">
+                    <div class="mode-head">
+                        <div>
+                            <div class="mode-title">Local Agent Bridge (Beta)</div>
+                            <div class="mode-subtitle">Send on-device detection summaries (or optional snapshots) to a local AI agent endpoint.</div>
+                        </div>
+                        <input type="checkbox" id="agent-bridge-enable">
+                    </div>
+                    <div class="mode-settings" id="settings-agent">
+                        <label class="control-row" for="agent-consent">
+                            <span>I explicitly allow local agent sharing</span>
+                            <input type="checkbox" id="agent-consent">
+                        </label>
+                        <label class="control-row" for="agent-endpoint">
+                            <span>Local Endpoint</span>
+                        </label>
+                        <input type="text" id="agent-endpoint" value="http://127.0.0.1:8787/ingest" autocomplete="off" spellcheck="false">
+                        <label class="control-row" for="agent-local-only">
+                            <span>Allow localhost only</span>
+                            <input type="checkbox" id="agent-local-only" checked>
+                        </label>
+                        <label class="control-row" for="agent-mode">
+                            <span>Share Mode</span>
+                        </label>
+                        <select id="agent-mode">
+                            <option value="summary">Summary Only (Safer)</option>
+                            <option value="snapshot">Summary + Snapshot</option>
+                        </select>
+                        <label class="control-row" for="agent-redact">
+                            <span>Redact face/hand regions in snapshots</span>
+                            <input type="checkbox" id="agent-redact" checked>
+                        </label>
+                        <label class="control-row" for="agent-interval">
+                            <span>Share Interval (sec)</span>
+                            <span class="value" id="agent-interval-value">2</span>
+                        </label>
+                        <input type="range" id="agent-interval" min="1" max="10" step="1" value="2">
+                        <label class="control-row" for="agent-shared-key">
+                            <span>Shared Key (optional but recommended)</span>
+                        </label>
+                        <input type="text" id="agent-shared-key" value="" autocomplete="off" spellcheck="false" placeholder="Set same key in your local agent">
+                        <div class="agent-actions">
+                            <button type="button" id="agent-send-now">Send Test Payload</button>
+                        </div>
+                        <div class="agent-status" id="agent-status">Bridge is off.</div>
+                    </div>
+                </section>
+
+                <section class="mode-card manual-card">
+                    <div class="mode-head">
+                        <div>
+                            <div class="mode-title">TFJS Object Detection</div>
+                            <div class="mode-subtitle">COCO-SSD boxes and class labels.</div>
+                        </div>
+                        <input type="checkbox" id="mode-object" class="manual-toggle">
+                    </div>
+                    <div class="mode-settings" id="settings-object">
+                        <label class="control-row" for="object-threshold">
+                            <span>Min Confidence</span>
+                            <span class="value" id="object-threshold-value">0.40</span>
+                        </label>
+                        <input type="range" id="object-threshold" min="0.2" max="0.95" step="0.05" value="0.40" data-manual-control>
+                        <label class="control-row" for="object-max-boxes">
+                            <span>Max Boxes</span>
+                            <span class="value" id="object-max-boxes-value">8</span>
+                        </label>
+                        <input type="range" id="object-max-boxes" min="1" max="20" step="1" value="8" data-manual-control>
+                        <label class="control-row" for="object-custom-labels">
+                            <span>High-IQ Custom Labels</span>
+                        </label>
+                        <input type="text" id="object-custom-labels" placeholder="keys, phone, medicine" style="flex: 1; background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text); padding: 0.2rem 0.4rem; border-radius: 4px; width: 100%; margin-top: 0.4rem;" data-manual-control>
+                    </div>
+                </section>
+
+                <section class="mode-card manual-card">
+                    <div class="mode-head">
+                        <div>
+                            <div class="mode-title">TFJS Pose</div>
+                            <div class="mode-subtitle">MoveNet keypoints and optional skeleton.</div>
+                        </div>
+                        <input type="checkbox" id="mode-pose" class="manual-toggle">
+                    </div>
+                    <div class="mode-settings" id="settings-pose">
+                        <label class="control-row" for="pose-threshold">
+                            <span>Keypoint Min Score</span>
+                            <span class="value" id="pose-threshold-value">0.45</span>
+                        </label>
+                        <input type="range" id="pose-threshold" min="0.2" max="0.95" step="0.05" value="0.45" data-manual-control>
+                        <label class="control-row" for="pose-skeleton">
+                            <span>Draw Skeleton</span>
+                            <input type="checkbox" id="pose-skeleton" checked data-manual-control>
+                        </label>
+                    </div>
+                </section>
+
+                <section class="mode-card manual-card">
+                    <div class="mode-head">
+                        <div>
+                            <div class="mode-title">MediaPipe Hands</div>
+                            <div class="mode-subtitle">Hand landmarks and handedness.</div>
+                        </div>
+                        <input type="checkbox" id="mode-hands" class="manual-toggle">
+                    </div>
+                    <div class="mode-settings" id="settings-hands">
+                        <label class="control-row" for="hands-max">
+                            <span>Max Hands</span>
+                            <span class="value" id="hands-max-value">2</span>
+                        </label>
+                        <input type="range" id="hands-max" min="1" max="2" step="1" value="2" data-manual-control>
+                        <label class="control-row" for="hands-threshold">
+                            <span>Min Detection Conf.</span>
+                            <span class="value" id="hands-threshold-value">0.60</span>
+                        </label>
+                        <input type="range" id="hands-threshold" min="0.3" max="0.95" step="0.05" value="0.60" data-manual-control>
+                    </div>
+                </section>
+
+                <section class="mode-card manual-card">
+                    <div class="mode-head">
+                        <div>
+                            <div class="mode-title">MediaPipe Face Mesh</div>
+                            <div class="mode-subtitle">Face landmarks for facial geometry tracking.</div>
+                        </div>
+                        <input type="checkbox" id="mode-face" class="manual-toggle">
+                    </div>
+                    <div class="mode-settings" id="settings-face">
+                        <label class="control-row" for="face-max">
+                            <span>Max Faces</span>
+                            <span class="value" id="face-max-value">1</span>
+                        </label>
+                        <input type="range" id="face-max" min="1" max="3" step="1" value="1" data-manual-control>
+                        <label class="control-row" for="face-refine">
+                            <span>Refine Landmarks</span>
+                            <input type="checkbox" id="face-refine" checked data-manual-control>
+                        </label>
+                    </div>
+                </section>
+
+                <section class="mode-card manual-card">
+                    <div class="mode-head">
+                        <div>
+                            <div class="mode-title">MediaPipe Segmentation</div>
+                            <div class="mode-subtitle">Foreground body mask visualization.</div>
+                        </div>
+                        <input type="checkbox" id="mode-segment" class="manual-toggle">
+                    </div>
+                    <div class="mode-settings" id="settings-segment">
+                        <label class="control-row" for="segment-model">
+                            <span>Model Variant</span>
+                            <span class="value" id="segment-model-value">1</span>
+                        </label>
+                        <input type="range" id="segment-model" min="0" max="1" step="1" value="1" data-manual-control>
+                        <label class="control-row" for="segment-alpha">
+                            <span>Overlay Alpha</span>
+                            <span class="value" id="segment-alpha-value">0.35</span>
+                        </label>
+                        <input type="range" id="segment-alpha" min="0.1" max="0.8" step="0.05" value="0.35" data-manual-control>
+                    </div>
+                </section>
+
+                <section class="mode-card manual-card">
+                    <div class="mode-head">
+                        <div>
+                            <div class="mode-title">OpenCV Scene Analysis</div>
+                            <div class="mode-subtitle">Canny edges and contour bounding boxes.</div>
+                        </div>
+                        <input type="checkbox" id="mode-opencv" class="manual-toggle">
+                    </div>
+                    <div class="mode-settings" id="settings-opencv">
+                        <label class="control-row" for="opencv-threshold1">
+                            <span>Canny Threshold 1</span>
+                            <span class="value" id="opencv-threshold1-value">90</span>
+                        </label>
+                        <input type="range" id="opencv-threshold1" min="30" max="240" step="5" value="90" data-manual-control>
+                        <label class="control-row" for="opencv-threshold2">
+                            <span>Canny Threshold 2</span>
+                            <span class="value" id="opencv-threshold2-value">170</span>
+                        </label>
+                        <input type="range" id="opencv-threshold2" min="60" max="320" step="5" value="170" data-manual-control>
+                        <label class="control-row" for="opencv-contours">
+                            <span>Draw Contours</span>
+                            <input type="checkbox" id="opencv-contours" checked data-manual-control>
+                        </label>
+                    </div>
+                </section>
+
+                <section class="mode-card debug-card">
+                    <div class="mode-title">Debug</div>
+                    <div class="mode-subtitle">Diagnostics and system snapshots.</div>
+                    <div class="agent-actions" style="margin-top: 0.8rem;">
+                        <button id="diag-copy-btn" class="debug-btn" type="button" style="width: 100%; text-align: center;">Copy Diagnostic Snapshot</button>
+                    </div>
+                </section>
+
+                <section class="mode-card hf-card">
+                    <div class="mode-title">Smart Eyes (AI Connect)</div>
+                    <div class="mode-subtitle">High-IQ scene understanding via Hugging Face.</div>
+                    <div class="control-group" style="margin-top: 0.8rem;">
+                        <label class="control-row">
+                            <span>HF API Key</span>
+                            <input type="password" id="hf-api-key" placeholder="hf_..." style="flex: 1; margin-left: 0.5rem; background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text); padding: 0.2rem 0.4rem; border-radius: 4px;">
+                        </label>
+                        <button id="ai-describe-btn" class="debug-btn" type="button" style="width: 100%; margin-top: 0.6rem; border-color: var(--accent);">AI Describe Scene</button>
+                    </div>
+                    <div id="ai-description-output" style="margin-top: 0.6rem; font-size: 0.82rem; color: var(--accent); min-height: 1.2rem; font-style: italic;"></div>
+                </section>
+
+                <section class="mode-card voice-card" style="border-color: var(--ok);">
+                    <div class="mode-title">Voice Interface</div>
+                    <div class="mode-subtitle">Hands-free accessibility and TTS feedback.</div>
+                    <div class="control-group" style="margin-top: 0.8rem;">
+                        <label class="control-row">
+                            <span>Enable Voice Commands</span>
+                            <input type="checkbox" id="voice-enable">
+                        </label>
+                        <label class="control-row">
+                            <span>Enable Speak Results</span>
+                            <input type="checkbox" id="voice-speak" checked>
+                        </label>
+                    </div>
+                    <div id="voice-status" style="margin-top: 0.6rem; font-size: 0.78rem; opacity: 0.8;">Status: Silent</div>
+                </section>
+
+                <div class="hint">
+                    Auto Mode disables all manual modes and cycles through multiple recognition families with randomized presets.
+                </div>
+                <div class="hint">Privacy: all recognition runs locally in the browser. No video leaves your device.</div>
+            </div>
+        </aside>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+</body>
+</html>

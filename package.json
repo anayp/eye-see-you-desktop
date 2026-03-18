@@ -1,0 +1,50 @@
+{
+  "name": "eye-see-you-desktop",
+  "version": "0.1.0",
+  "description": "Perception Engine for CLI Agents and Robotics",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test-bridge": "node scripts/test-bridge.mjs",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux",
+    "build:mac": "electron-builder --mac"
+  },
+  "build": {
+    "appId": "com.psybi.eye-see-you",
+    "productName": "Eye-See-You",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    },
+    "files": [
+      "**/*",
+      "!dist/*"
+    ]
+  },
+  "dependencies": {
+    "@huggingface/inference": "^4.13.15",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@tensorflow/tfjs-backend-wasm": "^4.22.0",
+    "@tensorflow/tfjs-backend-webgpu": "^4.22.0",
+    "@xenova/transformers": "^2.17.2",
+    "express": "^5.2.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^26.8.1"
+  }
+}
