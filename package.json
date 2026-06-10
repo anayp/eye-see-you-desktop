@@ -1,6 +1,6 @@
 {
   "name": "eye-see-you-desktop",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "description": "Perception Engine for CLI Agents and Robotics",
   "main": "main.js",
   "scripts": {
@@ -36,10 +36,10 @@
   },
   "dependencies": {
     "@huggingface/inference": "^4.13.15",
+    "@huggingface/transformers": "^3.8.1",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@tensorflow/tfjs-backend-wasm": "^4.22.0",
     "@tensorflow/tfjs-backend-webgpu": "^4.22.0",
-    "@xenova/transformers": "^2.17.2",
     "express": "^5.2.1",
     "ws": "^8.18.0"
   },

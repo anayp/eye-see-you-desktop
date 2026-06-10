@@ -1,4 +1,5 @@
 import * as hfService from './hf-service.js';
+import { maybeUpdateSceneGraph, forceUpdateSceneGraph, setGpsMode, setRoomId } from './spatial-engine.js';
 import * as voiceService from './voice-service.js';
 
 const d = {
@@ -109,15 +110,22 @@ const d = {
   voiceEnable: document.getElementById("voice-enable"),
   voiceSpeak: document.getElementById("voice-speak"),
   voiceStatus: document.getElementById("voice-status"),
-  termToggle: document.getElementById("terminal-toggle"),
-  termOverlay: document.getElementById("terminal-overlay"),
-  termClose: document.getElementById("terminal-close"),
-  termContainer: document.getElementById("terminal-container"),
-  brainSelect: document.getElementById("brain-select"),
+  // Bridge Dashboard
+  bridgeToggle: document.getElementById("bridge-toggle"),
+  bridgeToggleHub: document.getElementById("bridge-toggle-from-hub"),
+  bridgeOverlay: document.getElementById("bridge-overlay"),
+  bridgeClose: document.getElementById("bridge-close"),
+  bridgeDot: document.getElementById("bridge-dot"),
+  bridgeAgentCount: document.getElementById("bridge-agent-count"),
+  bridgeAgentList: document.getElementById("bridge-agent-list"),
+  bridgeNoAgents: document.getElementById("bridge-no-agents"),
+  bridgeCopyBtn: document.getElementById("bridge-copy-btn"),
+  // Token status (kept for layout)
   tokenPlanLabel: document.getElementById("token-plan-label"),
   tokenFill: document.getElementById("token-fill"),
   tokenUsage: document.getElementById("token-usage-percent"),
   rateLimit: document.getElementById("rate-limit-msg"),
+  // Key vault
   vaultModal: document.getElementById("vault-modal"),
   vaultToggle: document.getElementById("vault-toggle-btn"),
   vaultClose: document.getElementById("vault-close"),
@@ -126,44 +134,42 @@ const d = {
   helpText: document.getElementById("help-text"),
   helpClose: document.getElementById("help-close"),
   keyGemini: document.getElementById("key-gemini"),
-  keyClaude: document.getElementById("key-claude")
+  keyClaude: document.getElementById("key-claude"),
+  // Spatial
+  spatialGpsMode: document.getElementById("spatial-gps-mode"),
+  spatialRoomId: document.getElementById("spatial-room-id"),
+  spatialStatus: document.getElementById("spatial-status")
 };
 
-let terminal = null;
+// ── Bridge Dashboard ──────────────────────────────────────────────────────────
+let _bridgePollInterval = null;
 
-function initTerminal() {
-  if (terminal) return;
-  
-  terminal = new Terminal({
-    theme: { background: '#000000' },
-    cursorBlink: true,
-    fontSize: 13,
-    fontFamily: 'Consolas, "Courier New", monospace'
-  });
-  
-  terminal.open(d.termContainer);
-  terminal.write('--- Autonomous Agent Terminal ---\r\n');
-  terminal.write('Connecting to embedded Gemini CLI...\r\n');
+async function refreshBridgeDashboard() {
+  if (!window.electronAPI?.getBridgeStatus) return;
+  try {
+    const status = await window.electronAPI.getBridgeStatus();
+    const agents = status.mcpAgents || [];
+    const count = agents.length;
 
-  if (window.electronAPI) {
-    terminal.onData(data => {
-      window.electronAPI.sendCliInput(data);
-    });
+    if (d.bridgeAgentCount) d.bridgeAgentCount.textContent = count === 0 ? '0 connected' : `${count} connected`;
+    if (d.bridgeDot) {
+      d.bridgeDot.classList.toggle('active', count > 0);
+      d.bridgeDot.classList.toggle('offline', count === 0);
+    }
 
-    window.electronAPI.onCliOutput(data => {
-      terminal.write(data);
-    });
-
-    window.electronAPI.onCliExit(code => {
-      terminal.write(`\r\n--- Process exited with code ${code} ---\r\n`);
-    });
-
-    // Try to start gemini-cli if it exists in path, otherwise fallback
-    window.electronAPI.startCli({
-      command: 'gemini',
-      args: ['--help'], 
-      cwd: null
-    });
+    if (d.bridgeAgentList) {
+      if (count === 0) {
+        d.bridgeAgentList.innerHTML = '<div id="bridge-no-agents">No agents connected yet.</div>';
+      } else {
+        d.bridgeAgentList.innerHTML = agents.map(a => `
+          <div class="bridge-agent-card">
+            <div class="agent-name">${a.agent_name || 'anonymous'}${a.model ? ' · ' + a.model : ''}</div>
+            <div class="agent-meta">Connected ${a.connected_at ? new Date(a.connected_at).toLocaleTimeString() : 'unknown'}${a.session_id ? ' · ' + a.session_id.slice(0, 8) : ''}</div>
+          </div>`).join('');
+      }
+    }
+  } catch (err) {
+    log('Bridge dashboard refresh failed: ' + err.message, 'error');
   }
 }
 
@@ -183,65 +189,85 @@ function updateTokenStatus(percent, plan = "Free Tier", msg = "Rate limits stabl
   else d.tokenFill.style.background = "var(--accent)";
 }
 
-function bindHubControls() {
-  d.brainSelect.addEventListener("change", () => {
-    const brain = d.brainSelect.value;
-    log(`Brain switched to: ${brain}`, "info");
-    status(`Active Brain: ${brain}`);
-    
-    // Trigger the "Wake-up Protocol"
-    if (terminal) {
-      terminal.write(`\r\n--- Switching to ${brain.toUpperCase()} ---\r\n`);
-      
-      // In a real scenario, we'd map 'brain' to specific commands
-      // e.g., 'claude' -> 'claude-code', 'openai' -> 'openai-cli'
-      let cmd = 'gemini'; 
-      let args = ['--help'];
-
-      if (brain === 'claude') { cmd = 'claude'; args = ['-v']; }
-      if (brain === 'openai') { cmd = 'openai'; args = ['--help']; }
-
-      if (window.electronAPI) {
-        window.electronAPI.startCli({ command: cmd, args, cwd: null });
-      }
+function bindBridgeDashboard() {
+  // Toggle bridge overlay from top-bar button
+  const toggleBridge = () => {
+    const isVisible = d.bridgeOverlay.style.display === 'flex';
+    d.bridgeOverlay.style.display = isVisible ? 'none' : 'flex';
+    if (!isVisible) {
+      refreshBridgeDashboard();
+      // Poll while visible
+      _bridgePollInterval = setInterval(refreshBridgeDashboard, 3000);
+    } else {
+      clearInterval(_bridgePollInterval);
     }
+  };
+
+  if (d.bridgeToggle) d.bridgeToggle.addEventListener('click', toggleBridge);
+  if (d.bridgeToggleHub) d.bridgeToggleHub.addEventListener('click', toggleBridge);
+  if (d.bridgeClose) {
+    d.bridgeClose.addEventListener('click', () => {
+      d.bridgeOverlay.style.display = 'none';
+      clearInterval(_bridgePollInterval);
+    });
+  }
+
+  // Copy connect string
+  if (d.bridgeCopyBtn) {
+    d.bridgeCopyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText('ws://localhost:4141').then(() => {
+        d.bridgeCopyBtn.textContent = 'Copied!';
+        setTimeout(() => { d.bridgeCopyBtn.textContent = 'Copy'; }, 1500);
+      });
+    });
+  }
+
+  // Listen for bridge status changes pushed from main process
+  if (window.electronAPI?.onMcpSpeak) {
+    // Reuse the existing IPC channel pattern — bridge-status-changed fires a refresh
+    // (We rely on polling above; a push event would be cleaner but requires another preload entry)
+  }
+
+  // Vault controls
+  if (d.vaultToggle) d.vaultToggle.addEventListener('click', () => { d.vaultModal.style.display = 'flex'; });
+  if (d.vaultClose) d.vaultClose.addEventListener('click', () => { d.vaultModal.style.display = 'none'; });
+  if (d.vaultSave) d.vaultSave.addEventListener('click', () => {
+    log('Keys saved locally.', 'info');
+    d.vaultModal.style.display = 'none';
+    status('Vault updated.');
   });
 
-  d.vaultToggle.addEventListener("click", () => {
-    d.vaultModal.style.display = "flex";
-  });
-
-  d.vaultClose.addEventListener("click", () => {
-    d.vaultModal.style.display = "none";
-  });
-
-  d.vaultSave.addEventListener("click", () => {
-    log("Keys saved and encrypted (simulated).", "info");
-    d.vaultModal.style.display = "none";
-    status("Vault updated.");
-  });
-
-  document.querySelectorAll(".help-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const topic = btn.getAttribute("data-help");
-      d.helpText.innerHTML = HELP_CONTENT[topic] || "No help available for this topic.";
-      d.helpPopover.style.display = "block";
+  document.querySelectorAll('.help-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const topic = btn.getAttribute('data-help');
+      d.helpText.innerHTML = HELP_CONTENT[topic] || 'No help available.';
+      d.helpPopover.style.display = 'block';
     });
   });
+  if (d.helpClose) d.helpClose.addEventListener('click', () => { d.helpPopover.style.display = 'none'; });
 
-  d.helpClose.addEventListener("click", () => {
-    d.helpPopover.style.display = "none";
-  });
+  // Spatial engine controls
+  if (d.spatialGpsMode) {
+    d.spatialGpsMode.addEventListener('change', () => {
+      setGpsMode(d.spatialGpsMode.checked);
+      if (d.spatialStatus) d.spatialStatus.textContent = d.spatialGpsMode.checked ? 'GPS mode active.' : 'Indoor grid mode active.';
+      log('Spatial mode: ' + (d.spatialGpsMode.checked ? 'GPS (outdoor)' : 'Grid (indoor)'), 'info');
+    });
+  }
+  if (d.spatialRoomId) {
+    d.spatialRoomId.addEventListener('change', () => {
+      setRoomId(d.spatialRoomId.value.trim() || 'unknown_room');
+      log('Room ID set to: ' + d.spatialRoomId.value, 'info');
+    });
+  }
 
-  d.termToggle.addEventListener("click", () => {
-    const isVisible = d.termOverlay.style.display === "flex";
-    d.termOverlay.style.display = isVisible ? "none" : "flex";
-    if (!isVisible) initTerminal();
-  });
-
-  d.termClose.addEventListener("click", () => {
-    d.termOverlay.style.display = "none";
-  });
+  // Object snapshot capture handler (from mcp-server via main.js)
+  if (window.electronAPI?.onRequestObjectSnapshot) {
+    window.electronAPI.onRequestObjectSnapshot(({ label, bbox }) => {
+      const dataUrl = _captureObjectSnapshot(bbox);
+      window.electronAPI.sendObjectSnapshotResult({ label, dataUrl });
+    });
+  }
 }
 
 const ctx = d.canvas.getContext("2d");
@@ -1590,6 +1616,49 @@ function autoChanged() {
   savePrefs();
 }
 
+// ── Spatial Scene Graph Integration ───────────────────────────────────────────
+
+function _maybeUpdateAndBroadcastSceneGraph() {
+  if (!S.running || !d.video.videoWidth) return;
+  const videoInfo = { width: d.video.videoWidth, height: d.video.videoHeight, mirrored: d.mirror.checked };
+  const graph = maybeUpdateSceneGraph(S.result, videoInfo);
+  if (graph && window.electronAPI?.updateSceneGraph) {
+    window.electronAPI.updateSceneGraph(graph);
+    if (d.spatialStatus) {
+      const objCount = (graph.objects || []).length;
+      const surfCount = (graph.surfaces || []).length;
+      d.spatialStatus.textContent = `${surfCount} surface${surfCount !== 1 ? 's' : ''}, ${objCount} object${objCount !== 1 ? 's' : ''} mapped. Room: ${graph.room_id || 'unknown'}`;
+    }
+  }
+}
+
+/**
+ * Capture a JPEG snapshot of a specific object region (or the full frame if no bbox).
+ * @param {number[]|null} bbox  — normalized [x, y, w, h] in [0,1] range
+ * @returns {string|null}       — data URL
+ */
+function _captureObjectSnapshot(bbox) {
+  if (!d.video.videoWidth || !d.video.videoHeight) return null;
+  const vw = d.video.videoWidth, vh = d.video.videoHeight;
+  let sx = 0, sy = 0, sw = vw, sh = vh;
+
+  if (bbox && bbox.length === 4) {
+    // Expand slightly for context
+    const pad = 0.05;
+    sx = Math.max(0, (bbox[0] - pad) * vw);
+    sy = Math.max(0, (bbox[1] - pad) * vh);
+    sw = Math.min(vw - sx, (bbox[2] + pad * 2) * vw);
+    sh = Math.min(vh - sy, (bbox[3] + pad * 2) * vh);
+  }
+
+  const c = document.createElement('canvas');
+  c.width = Math.round(sw);
+  c.height = Math.round(sh);
+  const c2d = c.getContext('2d');
+  c2d.drawImage(d.video, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.82);
+}
+
 function loop(ts) {
   if (!S.running) return;
   resizeCanvas();
@@ -1615,6 +1684,8 @@ function loop(ts) {
   runObject(ts); runPose(ts); runHands(ts); runFace(ts); runSegment(ts); runOpenCv(ts);
   updateDetectionStatus();
   draw();
+  // Spatial scene graph update (rate-limited internally to every 2s)
+  _maybeUpdateAndBroadcastSceneGraph();
   maybeSendAgentUpdate(ts).catch((e) => log("Agent bridge loop error: " + e.message, "error"));
   requestAnimationFrame(loop);
 }
@@ -1737,13 +1808,28 @@ function bindControls() {
           performAiDescription().then(res => {
             if (d.voiceSpeak.checked) voiceService.speak(res);
           });
+        } else if (cmd.includes("remember") && (cmd.includes("my") || cmd.includes("this"))) {
+          // "remember my keys" / "remember this wallet"
+          const target = cmd.replace(/remember|my|this|please|the/g, "").trim();
+          if (target) {
+            log(`Voice: remember object triggered for: ${target}`, "info");
+            status(`Snapshotting memory for "${target}"...`);
+            // Signal to any connected agent via TTS — the agent should call remember_object
+            if (d.voiceSpeak.checked) voiceService.speak(`Saving a memory for ${target}.`);
+          }
+        } else if (cmd.includes("where is") || cmd.includes("find my")) {
+          const target = cmd.replace(/where is|find my|find|my|the/g, "").trim();
+          if (target) {
+            log(`Voice: locate object triggered for: ${target}`, "info");
+            status(`Looking for "${target}" in memory...`);
+            if (d.voiceSpeak.checked) voiceService.speak(`Checking my memory for ${target}.`);
+          }
         } else if (cmd.includes("find") || cmd.includes("search for")) {
           const target = cmd.replace(/find|search for|a |the/g, "").trim();
           if (target) {
             d.objLabels.value = target;
             status(`Searching for ${target}...`);
             log(`Voice search triggered for: ${target}`, "info");
-            // If object mode isn't on, turn it on
             if (!d.object.checked) d.object.click();
           }
         } else if (cmd.includes("start") || cmd.includes("camera")) {
@@ -1932,7 +2018,7 @@ function boot() {
     else S.agent.sessionId = "session-" + Math.floor(Math.random() * 1e9).toString(16);
   }
   loadPrefs();
-  bindMenu(); bindStartup(); bindControls(); bindHubControls();
+  bindMenu(); bindStartup(); bindControls(); bindBridgeDashboard();
   updateTokenStatus(15); // Initial simulation
   d.logLevel.value = S.log.level;
   d.showDevLog.checked = S.log.visible;

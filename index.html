@@ -17,50 +17,130 @@
             }
         };
     </script>
-    <link rel="stylesheet" href="local-models/xterm.css" />
-    <script src="local-models/xterm.js"></script>
     <style>
-        #terminal-overlay {
+        /* ── Agent Bridge Dashboard Overlay ── */
+        #bridge-overlay {
             position: fixed;
             bottom: 1.5rem;
             right: 1.5rem;
-            width: 550px;
-            height: 400px;
-            background: #000;
-            border: 1px solid var(--panel-border);
-            border-radius: 8px;
+            width: 360px;
+            background: rgba(8,12,18,0.97);
+            border: 1px solid rgba(102,217,255,0.35);
+            border-radius: 12px;
             z-index: 2000;
             display: none;
             flex-direction: column;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            box-shadow: 0 12px 48px rgba(0,0,0,0.85), 0 0 0 1px rgba(102,217,255,0.08);
             overflow: hidden;
+            backdrop-filter: blur(12px);
         }
-        .terminal-head {
-            padding: 0.5rem 1rem;
-            background: rgba(255,255,255,0.07);
+        .bridge-head {
+            padding: 0.6rem 1rem;
+            background: rgba(102,217,255,0.07);
             display: flex;
             justify-content: space-between;
             align-items: center;
             font-size: 0.75rem;
-            border-bottom: 1px solid var(--panel-border);
+            border-bottom: 1px solid rgba(102,217,255,0.15);
             color: var(--text);
             user-select: none;
         }
-        #terminal-container {
-            flex: 1;
-            width: 100%;
-            height: 100%;
-            padding: 4px;
+        .bridge-head-title {
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            color: #66d9ff;
+            font-size: 0.78rem;
+        }
+        .bridge-body { padding: 0.8rem 1rem; display: flex; flex-direction: column; gap: 0.6rem; }
+        .bridge-connect-string {
+            font-family: 'Consolas', monospace;
+            font-size: 0.75rem;
+            padding: 0.4rem 0.6rem;
+            background: rgba(102,217,255,0.07);
+            border-radius: 6px;
+            border: 1px solid rgba(102,217,255,0.2);
+            color: #a0eeff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.4rem;
+        }
+        .bridge-copy-btn {
+            background: rgba(102,217,255,0.15);
+            border: none;
+            border-radius: 4px;
+            color: #66d9ff;
+            cursor: pointer;
+            padding: 0.15rem 0.5rem;
+            font-size: 0.68rem;
+            font-weight: 600;
+            transition: background 0.15s;
+        }
+        .bridge-copy-btn:hover { background: rgba(102,217,255,0.28); }
+        .bridge-agents-label {
+            font-size: 0.68rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-top: 0.2rem;
+        }
+        #bridge-agent-list { display: flex; flex-direction: column; gap: 0.35rem; }
+        .bridge-agent-card {
+            padding: 0.35rem 0.6rem;
+            background: rgba(255,255,255,0.04);
+            border-radius: 6px;
+            border-left: 3px solid #66d9ff;
+            font-size: 0.72rem;
+        }
+        .bridge-agent-card .agent-name { color: #eaf8ff; font-weight: 600; }
+        .bridge-agent-card .agent-meta { color: var(--muted); font-size: 0.66rem; margin-top: 0.1rem; }
+        #bridge-no-agents {
+            font-size: 0.72rem;
+            color: var(--muted);
+            font-style: italic;
+            padding: 0.3rem 0;
+        }
+        .bridge-counter {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.72rem;
+        }
+        .bridge-dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: #66d9ff;
+            box-shadow: 0 0 5px #66d9ff;
+        }
+        .bridge-dot.offline { background: #555; box-shadow: none; }
+        .bridge-dot.active { animation: bridge-pulse 1.4s ease-in-out infinite; }
+        @keyframes bridge-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.35; }
         }
     </style>
 </head>
 <body>
-    <div id="terminal-overlay">
-        <div class="terminal-head">
-            <span style="font-weight: 600; letter-spacing: 0.03em;">Autonomous Agent (Gemini CLI)</span>
-            <button id="terminal-close" class="icon-btn" style="font-size: 1.2rem; opacity: 0.7;">&times;</button>
+    <!-- Agent Bridge Dashboard -->
+    <div id="bridge-overlay">
+        <div class="bridge-head">
+            <span class="bridge-head-title">⬡ Agent Bridge</span>
+            <div class="bridge-counter">
+                <span class="bridge-dot" id="bridge-dot"></span>
+                <span id="bridge-agent-count">0 connected</span>
+            </div>
+            <button id="bridge-close" class="icon-btn" style="font-size: 1.2rem; opacity: 0.7;">&times;</button>
         </div>
-        <div id="terminal-container"></div>
+        <div class="bridge-body">
+            <div style="font-size: 0.7rem; color: var(--muted);">MCP endpoint — connect any agent, no key required:</div>
+            <div class="bridge-connect-string">
+                <span id="bridge-connect-str">ws://localhost:4141</span>
+                <button class="bridge-copy-btn" id="bridge-copy-btn">Copy</button>
+            </div>
+            <div class="bridge-agents-label">Connected Agents</div>
+            <div id="bridge-agent-list">
+                <div id="bridge-no-agents">No agents connected yet.</div>
+            </div>
+        </div>
     </div>
     <video id="camera-feed" autoplay playsinline muted></video>
     <canvas id="overlay-canvas"></canvas>
@@ -96,10 +176,11 @@
                 <span></span>
                 <span></span>
             </button>
-            <button id="terminal-toggle" class="icon-btn" style="margin-left: auto; margin-right: 1rem; color: var(--accent);" title="Toggle Agent Terminal">
+            <button id="bridge-toggle" class="icon-btn" style="margin-left: auto; margin-right: 1rem; color: var(--accent);" title="Toggle Agent Bridge Dashboard">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="4 17 10 11 4 5"></polyline>
-                    <line x1="12" y1="19" x2="20" y2="19"></line>
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                    <path d="M2 17l10 5 10-5"></path>
+                    <path d="M2 12l10 5 10-5"></path>
                 </svg>
             </button>
         </header>
@@ -117,15 +198,12 @@
                     <div class="mode-subtitle">Manage AI brains and real-time usage.</div>
                     
                     <div class="control-group" style="margin-top: 0.8rem;">
-                        <label class="control-row">
-                            <span>Active Brain</span>
-                            <select id="brain-select" style="flex: 1; margin-left: 0.5rem; background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text); padding: 0.2rem 0.4rem; border-radius: 4px;">
-                                <option value="gemini">Gemini 2.0 (Pre-bundled)</option>
-                                <option value="claude">Claude 3.5 Sonnet</option>
-                                <option value="openai">OpenAI GPT-4o</option>
-                                <option value="perplexity">Perplexity Sonar</option>
-                            </select>
-                        </label>
+                        <div style="font-size: 0.72rem; color: var(--muted); margin-bottom: 0.5rem; line-height: 1.45;">
+                            Connect any AI agent to <code style="color: #66d9ff;">ws://localhost:4141</code>. No API key needed in this app — each agent uses its own key.
+                        </div>
+                        <button id="bridge-toggle-from-hub" class="debug-btn" style="width:100%; border-color: var(--accent); color: var(--accent);">
+                            Open Bridge Dashboard
+                        </button>
                     </div>
 
                     <div id="token-status-bar" style="margin-top: 0.8rem; padding: 0.6rem; background: rgba(0,0,0,0.4); border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
@@ -483,6 +561,23 @@
                     <div class="mode-subtitle">Diagnostics and system snapshots.</div>
                     <div class="agent-actions" style="margin-top: 0.8rem;">
                         <button id="diag-copy-btn" class="debug-btn" type="button" style="width: 100%; text-align: center;">Copy Diagnostic Snapshot</button>
+                    </div>
+                </section>
+
+                <!-- Spatial Map Settings -->
+                <section class="mode-card" style="border-color: rgba(142,247,162,0.4); background: rgba(142,247,162,0.02);">
+                    <div class="mode-title">Spatial Scene Graph</div>
+                    <div class="mode-subtitle">Lightweight 3-D room map — surfaces, grids, object anchors.</div>
+                    <div class="control-group" style="margin-top: 0.8rem;">
+                        <label class="control-row" for="spatial-gps-mode">
+                            <span>Outdoor / GPS Mode</span>
+                            <input type="checkbox" id="spatial-gps-mode">
+                        </label>
+                        <label class="control-row" for="spatial-room-id">
+                            <span>Room Label</span>
+                        </label>
+                        <input type="text" id="spatial-room-id" value="living_room" placeholder="e.g. kitchen, office" style="flex:1; background:rgba(0,0,0,0.3); border:1px solid var(--panel-border); color:var(--text); padding:0.2rem 0.4rem; border-radius:4px; width:100%; margin-top:0.3rem;">
+                        <div id="spatial-status" style="margin-top:0.5rem; font-size:0.72rem; color: rgba(142,247,162,0.8);">Scene graph initializes after camera starts.</div>
                     </div>
                 </section>
 
