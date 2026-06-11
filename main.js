@@ -49,7 +49,7 @@ function startBridge() {
 app.whenReady().then(() => {
   logger.initLogger();
   // Ensure profile directories exist
-  const profileDir = path.join(__dirname, 'profile');
+  const profileDir = path.join(app.getPath('userData'), 'profile');
   const objectsDir = path.join(profileDir, 'objects');
   [profileDir, objectsDir].forEach(dir => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });

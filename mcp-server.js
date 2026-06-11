@@ -16,7 +16,7 @@
 const WebSocket = require('ws');
 const fs = require('fs');
 const path = require('path');
-const { ipcMain } = require('electron');
+const { app, ipcMain } = require('electron');
 const logger = require('./logger');
 
 // ── State ──────────────────────────────────────────────────────────────────────
@@ -29,13 +29,20 @@ let latestSceneGraph = null;
 const agentMeta = new WeakMap();
 
 // ── File Paths ─────────────────────────────────────────────────────────────────
-const PROFILE_DIR = path.join(__dirname, 'profile');
-const MEMORIES_PATH = path.join(PROFILE_DIR, 'memories.md');
-const STATUS_PATH = path.join(PROFILE_DIR, 'status.md');
-const OBJECTS_DIR = path.join(PROFILE_DIR, 'objects');
-const SCENE_GRAPH_PATH = path.join(PROFILE_DIR, 'scene_graph.json');
+let PROFILE_DIR, MEMORIES_PATH, STATUS_PATH, OBJECTS_DIR, SCENE_GRAPH_PATH;
+
+function initPaths() {
+  if (PROFILE_DIR) return;
+  const userDataPath = app ? app.getPath('userData') : __dirname;
+  PROFILE_DIR = path.join(userDataPath, 'profile');
+  MEMORIES_PATH = path.join(PROFILE_DIR, 'memories.md');
+  STATUS_PATH = path.join(PROFILE_DIR, 'status.md');
+  OBJECTS_DIR = path.join(PROFILE_DIR, 'objects');
+  SCENE_GRAPH_PATH = path.join(PROFILE_DIR, 'scene_graph.json');
+}
 
 function ensureDirs() {
+  initPaths();
   [PROFILE_DIR, OBJECTS_DIR].forEach(d => {
     if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
   });
@@ -99,6 +106,7 @@ function initMcpServer() {
 
 /** Called from main.js to push scene graph updates received from renderer */
 function updateSceneGraph(sceneGraph) {
+  initPaths();
   latestSceneGraph = sceneGraph;
   // Persist to disk on meaningful updates (non-blocking)
   if (sceneGraph) {
@@ -192,6 +200,7 @@ async function handleRequest(ws, req) {
   }
 
   if (method === 'resources/read') {
+    initPaths();
     const uri = params?.uri || '';
     if (uri.includes('memories')) {
       const content = fs.existsSync(MEMORIES_PATH) ? fs.readFileSync(MEMORIES_PATH, 'utf8') : '';
@@ -291,6 +300,7 @@ async function handleRequest(ws, req) {
 
     // get_scene_graph
     if (name === 'get_scene_graph') {
+      initPaths();
       const graph = latestSceneGraph
         || (fs.existsSync(SCENE_GRAPH_PATH) ? JSON.parse(fs.readFileSync(SCENE_GRAPH_PATH, 'utf8')) : null)
         || { status: 'NO_GRAPH', hint: 'Scene graph is not yet initialized. The spatial engine activates after a few seconds of camera operation.' };
@@ -448,6 +458,7 @@ async function _rememberObject(label, bboxHint) {
 }
 
 function _locateObject(label) {
+  initPaths();
   const filePath = path.join(OBJECTS_DIR, `${label}.json`);
   if (!fs.existsSync(filePath)) {
     return {
