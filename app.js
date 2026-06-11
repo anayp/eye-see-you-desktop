@@ -137,8 +137,8 @@ const d = {
   keyClaude: document.getElementById("key-claude"),
   // Spatial
   spatialGpsMode: document.getElementById("spatial-gps-mode"),
-  spatialRoomId: document.getElementById("spatial-room-id"),
-  spatialStatus: document.getElementById("spatial-status")
+  spatialRoomLabel: document.getElementById("spatial-room-label"),
+  mirrorVideo: document.getElementById("settings-mirror-video"),
 };
 
 // ── Bridge Dashboard ──────────────────────────────────────────────────────────
@@ -202,6 +202,19 @@ function bindBridgeDashboard() {
       clearInterval(_bridgePollInterval);
     }
   };
+
+  if (d.mirrorVideo) {
+    d.mirrorVideo.addEventListener("change", (e) => {
+      const isMirrored = e.target.checked;
+      if (isMirrored) {
+        d.video.classList.add('mirrored');
+        d.overlay.classList.add('mirrored');
+      } else {
+        d.video.classList.remove('mirrored');
+        d.overlay.classList.remove('mirrored');
+      }
+    });
+  }
 
   if (d.bridgeToggle) d.bridgeToggle.addEventListener('click', toggleBridge);
   if (d.bridgeToggleHub) d.bridgeToggleHub.addEventListener('click', toggleBridge);
@@ -363,7 +376,7 @@ const RUNTIMES = {
   },
   pose: {
     label: "Pose runtime",
-    src: "local-models/pose-detection.js",
+    src: "https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection",
     ready: () => !!window.poseDetection,
     global: "poseDetection",
     timeout: 18000
@@ -902,25 +915,29 @@ function waitCv(timeout = 45000) {
   if (markCvReady()) return Promise.resolve(window.cv);
   return new Promise((resolve, reject) => {
     let done = false;
+    let to, poll;
     const finish = () => {
       if (done) return;
-      if (!markCvReady()) return;
+      if (!markCvReady()) {
+        if (window.cv) {
+           window.__eyeSeeEwCvReady = true;
+           done = true;
+           clearTimeout(to);
+           clearInterval(poll);
+           resolve(window.cv);
+           return;
+        }
+        return;
+      }
       done = true;
       clearTimeout(to);
       clearInterval(poll);
       resolve(window.cv);
     };
-    const fail = () => {
-      if (done) return;
-      done = true;
-      clearInterval(poll);
-      const hasCv = !!window.cv;
-      const hasMat = !!(window.cv && window.cv.Mat);
-      reject(new Error("OpenCV init timeout (cv=" + hasCv + ", Mat=" + hasMat + ")"));
-    };
-    const poll = setInterval(finish, 90);
-    const to = setTimeout(fail, timeout);
-    window.__eyeSeeEwOnCvReady = finish;
+    to = setTimeout(() => {
+      if (!done) { done = true; clearInterval(poll); reject(new Error("OpenCV init timeout")); }
+    }, timeout);
+    poll = setInterval(finish, 100);
 
     if (window.cv && typeof window.cv.then === "function") {
       try {
@@ -1088,7 +1105,7 @@ async function ensureObject() {
   if (S.visionWorker) return;
   cap("object", "loading", "pending");
   
-  S.visionWorker = new Worker('vision-worker.js');
+  S.visionWorker = new Worker('vision-worker.js', { type: 'module' });
   
   S.visionWorker.onmessage = (e) => {
     const { type, predictions, message, backend } = e.data;
